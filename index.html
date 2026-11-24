@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Car Deal Calculator</title>
+<meta name="description" content="See whether trading in or selling your car is the better deal, across dealers, after tax and financing.">
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --text: #1a1d21; --muted: #6b7280;
+    --border: #e3e6ea; --line: #c9ced6; --accent: #2563eb; --good: #15803d; --goodbg: #ecfdf3; --input: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --card: #171a20; --text: #e7e9ec; --muted: #9aa1ab;
+      --border: #2a2f37; --line: #3a414c; --accent: #6b9cff; --good: #4ade80; --goodbg: #13261b; --input: #0f1115;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 8px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 14px; }
+  .steps { margin: 0 0 16px; padding-left: 20px; color: var(--muted); font-size: 14px; }
+  .steps li { margin: 2px 0; }
+  .steps b { color: var(--text); font-weight: 600; }
+
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+  .settings { display: flex; flex-wrap: wrap; gap: 12px; }
+  .settings > label { flex: 1 1 150px; }
+  .settings .switch { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; cursor: pointer;
+    font-size: 13px; color: var(--text); align-self: flex-end; padding-bottom: 8px; }
+  .switch input { appearance: none; -webkit-appearance: none; width: 36px; height: 20px; margin: 0; padding: 0;
+    border-radius: 999px; background: var(--border); border: none; position: relative; cursor: pointer; transition: background .15s; }
+  .switch input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+    border-radius: 50%; background: #fff; transition: transform .15s; }
+  .switch input:checked { background: var(--accent); }
+  .switch input:checked::after { transform: translateX(16px); }
+  .lux-field[hidden] { display: none; }
+  .stateinfo { flex: 1 1 100%; font-size: 13px; color: var(--muted); margin: 0; }
+  .stateinfo:empty { display: none; }
+  .disclaimer { flex: 1 1 100%; font-size: 12px; margin: 0; padding-top: 8px; border-top: 1px solid var(--border); color: var(--muted); }
+
+  label { display: block; font-size: 12px; color: var(--muted); text-align: left; }
+  .hint { display: block; font-size: 11px; opacity: .8; }
+  input, select { width: 100%; margin-top: 3px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--input); color: var(--text); font: inherit; }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+  .summary { background: var(--goodbg); border-color: var(--good); font-weight: 500;
+    position: sticky; top: 8px; z-index: 5; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  .summary[hidden] { display: none; }
+
+  /* ---------- Decision tree ---------- */
+  .tree { margin-top: 6px; }
+  .tree ul { list-style: none; margin: 0; padding: 24px 0 0; display: flex; justify-content: center; position: relative; }
+  .tree li { flex: 1 1 0; min-width: 0; position: relative; padding: 24px 6px 0; }
+  /* connectors: horizontal bar above siblings + drop into each child */
+  .tree li::before, .tree li::after { content: ""; position: absolute; top: 0; right: 50%; width: 50%; height: 24px;
+    border-top: 2px solid var(--line); }
+  .tree li::after { right: auto; left: 50%; border-left: 2px solid var(--line); }
+  .tree li:first-child::before, .tree li:last-child::after { border: 0 none; }
+  .tree li:last-child::before { border-right: 2px solid var(--line); border-radius: 0 8px 0 0; }
+  .tree li:first-child::after { border-radius: 8px 0 0 0; }
+  .tree li:only-child { padding-top: 0; }
+  .tree li:only-child::before, .tree li:only-child::after { display: none; }
+  .tree ul::before { content: ""; position: absolute; top: 0; left: 50%; height: 24px; border-left: 2px solid var(--line); }
+
+  .node { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+  .node-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+  .root { max-width: 640px; margin: 0 auto; }
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; align-items: end; }
+  .dealer-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .dealer-head input { margin: 0; font-weight: 600; }
+  .dealer-head button { flex: 0 0 auto; }
+
+  .leaf { display: flex; flex-direction: column; gap: 8px; }
+  .leaf.best { border-color: var(--good); box-shadow: 0 0 0 1px var(--good); }
+  .leaf-title { font-weight: 600; font-size: 14px; }
+  .leaf-title small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+  .given { font-size: 13px; color: var(--muted); }
+  .given b { color: var(--text); }
+  .res { border-top: 1px solid var(--border); padding-top: 6px; font-size: 13px; }
+  .empty { color: var(--muted); font-size: 13px; }
+  .row { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; }
+  .row span:first-child { color: var(--muted); }
+  .net { font-weight: 700; font-size: 15px; margin-top: 3px; }
+  .net span:first-child { color: var(--text); }
+  .delta { font-size: 12px; color: var(--muted); text-align: right; }
+  .best .delta { color: var(--good); font-weight: 600; }
+
+  button { font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--border); background: transparent; color: var(--text); }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { color: #fff; opacity: .9; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 18px 0 6px; }
+  .note { color: var(--muted); font-size: 13px; margin: 12px 0 0; }
+  footer { max-width: 1200px; margin: 0 auto; padding: 20px 16px 28px; color: var(--muted); font-size: 12px; text-align: center; }
+  footer a { color: var(--muted); }
+  footer a:hover { color: var(--accent); }
+
+  /* ---------- Phones: vertical tree ---------- */
+  @media (max-width: 760px) {
+    main { padding: 16px 12px 4px; }
+    h1 { font-size: 20px; }
+    .sub { font-size: 14px; }
+    .steps { font-size: 13px; padding-left: 18px; }
+    input, select { font-size: 16px; padding: 9px 10px; } /* stops iOS zoom on tap */
+    .settings { gap: 10px; }
+    .settings > label { flex: 1 1 calc(50% - 5px); }
+    .settings > label:first-child { flex-basis: 100%; }
+    .settings .switch { flex: 1 1 100%; padding-bottom: 0; font-size: 14px; }
+    .summary { position: static; box-shadow: none; font-size: 14px; }
+
+    .tree ul { display: block; padding: 0 0 0 14px; margin-left: 12px; border-left: 2px solid var(--line); }
+    .tree ul::before { display: none; }
+    .tree li, .tree li:only-child { padding: 12px 0 0; }
+    /* :nth-child(n) bumps specificity past the desktop :first-child/:last-child connector rules */
+    .tree li:nth-child(n)::before { display: block; content: ""; position: absolute; top: 30px; left: -14px; right: auto;
+      width: 12px; height: 0; border: 0; border-top: 2px solid var(--line); border-radius: 0; }
+    .tree li:nth-child(n)::after { display: none; }
+    /* hide the trunk line below the last branch */
+    .tree li:nth-child(n):last-child::after { display: block; content: ""; position: absolute; left: -16px; right: auto;
+      top: 32px; bottom: 0; width: 2px; height: auto; border: 0; border-radius: 0; background: var(--bg); }
+    .fields { grid-template-columns: 1fr 1fr; gap: 10px; }
+    button { min-height: 40px; }
+    .toolbar { flex-direction: column; }
+    .toolbar button { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Car Deal Calculator</h1>
+  <p class="sub">See whether trading in or selling your car is the better deal, at each dealer, after tax and financing.</p>
+
+  <ol class="steps">
+    <li><b>Pick your state</b> to fill in the sales tax rate.</li>
+    <li><b>Start at the top of the tree</b> with your current car: what you still owe and the best cash offer you've gotten for it.</li>
+    <li><b>Fill in the dealer's deal</b> and the trade-in they're offering. Add more dealers to compare. Every path is calculated, and the cheapest is highlighted.</li>
+  </ol>
+
+  <div class="panel settings">
+    <label>State<select id="state"></select></label>
+    <label>Sales tax %<input type="number" inputmode="decimal" step="0.01" id="rate" placeholder="0"></label>
+    <label class="switch"><input type="checkbox" id="lux" role="switch"> Luxury rate</label>
+    <label class="lux-field" hidden>Luxury tax %<input type="number" inputmode="decimal" step="0.01" id="luxRate"></label>
+    <label class="lux-field" hidden>Applies above ($)<input type="number" inputmode="decimal" step="1000" id="threshold"></label>
+    <p class="stateinfo" id="stateinfo"></p>
+    <p class="disclaimer">
+      Rates are state-level only, last checked November 2026, and may be out of date. They don't include county or city taxes.
+      Look up your actual rate with your state's DMV or tax department and enter it above.
+    </p>
+  </div>
+
+  <div class="panel summary" id="summary" hidden></div>
+
+  <div class="tree" id="tree"></div>
+
+  <div class="toolbar">
+    <button id="add" class="primary">+ Add a dealer to compare</button>
+    <button id="share">Share link</button>
+    <button id="example">Try an example</button>
+    <button id="reset">Start over</button>
+  </div>
+
+  <p class="note">
+    <b>Net cost</b> = price − discount − rebate + fees + sales tax + interest − what you get for your car + what you still owe on it.
+    <b>Trade in:</b> the dealer pays off your loan, and any shortfall is added to the new loan. In most states the trade-in value also lowers the taxable price.
+    <b>Sell for cash:</b> your loan is paid from the sale, and anything left goes toward the new car as extra down payment. There's no tax credit.
+    Estimates only.
+  </p>
+</main>
+
+<footer>
+  © 2026 <a href="https://www.linkedin.com/in/viyaleta/" target="_blank" rel="noopener">Viyaleta Apgar</a> ·
+  <a href="https://www.linkedin.com/in/viyaleta/" target="_blank" rel="noopener">LinkedIn</a> ·
+  <a href="https://github.com/viyaleta" target="_blank" rel="noopener">GitHub</a> ·
+  <a href="https://buymeacoffee.com/viyaleta" target="_blank" rel="noopener">Buy me a coffee</a>
+</footer>
+
+<script>
+  const KEY = "carDealCalc.v3";
+  const MAX_DEALERS = 3;
+
+  // State-level vehicle tax, checked Nov 2026. [code, name, rate %, trade-in credit, note, extras]
+  // credit: "full" = trade-in lowers taxable price, "none" = taxed on full price, "cap" = credit capped
+  const STATES = [
+    ["AL", "Alabama", 2, "full", "Local taxes usually apply too."],
+    ["AK", "Alaska", 0, "full", "No state sales tax; some cities charge local tax."],
+    ["AZ", "Arizona", 5.6, "full", "Local taxes usually apply too."],
+    ["AR", "Arkansas", 6.5, "full", "Local taxes usually apply too."],
+    ["CA", "California", 7.25, "none", "Local district taxes usually apply too."],
+    ["CO", "Colorado", 2.9, "full", "Local taxes usually apply too."],
+    ["CT", "Connecticut", 6.35, "full", "7.75% applies to vehicles over $50,000.", { luxRate: 7.75, threshold: 50000 }],
+    ["DE", "Delaware", 4.25, "full", "No sales tax; this is Delaware's vehicle document fee."],
+    ["DC", "District of Columbia", 7, "none", "Excise tax varies by vehicle weight and fuel economy; 7% is a rough middle."],
+    ["FL", "Florida", 6, "full", "County surtax applies to the first $5,000."],
+    ["GA", "Georgia", 7, "full", "Title ad valorem tax (TAVT) on the vehicle's fair market value."],
+    ["HI", "Hawaii", 4, "none", "General excise tax; county surcharges may apply."],
+    ["ID", "Idaho", 6, "full", ""],
+    ["IL", "Illinois", 6.25, "full", "Local taxes usually apply too."],
+    ["IN", "Indiana", 7, "full", ""],
+    ["IA", "Iowa", 5, "full", "One-time fee for new registration."],
+    ["KS", "Kansas", 6.5, "full", "Local taxes usually apply too."],
+    ["KY", "Kentucky", 6, "full", "Motor vehicle usage tax."],
+    ["LA", "Louisiana", 5, "full", "Local taxes usually apply too."],
+    ["ME", "Maine", 5.5, "full", ""],
+    ["MD", "Maryland", 6.5, "full", "Vehicle excise tax."],
+    ["MA", "Massachusetts", 6.25, "full", ""],
+    ["MI", "Michigan", 6, "cap", "Trade-in credit is capped at $12,000 for 2026.", { cap: 12000 }],
+    ["MN", "Minnesota", 6.875, "full", ""],
+    ["MS", "Mississippi", 5, "full", "Local taxes may apply too."],
+    ["MO", "Missouri", 4.225, "full", "Local taxes usually apply too."],
+    ["MT", "Montana", 0, "full", "No sales tax."],
+    ["NE", "Nebraska", 5.5, "full", "Local taxes usually apply too."],
+    ["NV", "Nevada", 6.85, "full", "Local taxes usually apply too."],
+    ["NH", "New Hampshire", 0, "full", "No sales tax."],
+    ["NJ", "New Jersey", 6.625, "full", ""],
+    ["NM", "New Mexico", 4, "full", "Motor vehicle excise tax."],
+    ["NY", "New York", 4, "full", "Local taxes apply; most areas total 7–8.875%."],
+    ["NC", "North Carolina", 3, "full", "Highway use tax."],
+    ["ND", "North Dakota", 5, "full", ""],
+    ["OH", "Ohio", 5.75, "full", "County taxes usually apply too."],
+    ["OK", "Oklahoma", 4.5, "full", "1.25% sales tax plus 3.25% excise tax."],
+    ["OR", "Oregon", 0, "full", "No sales tax; dealers pay a small vehicle privilege tax."],
+    ["PA", "Pennsylvania", 6, "full", "Allegheny County adds 1%, Philadelphia adds 2%."],
+    ["RI", "Rhode Island", 7, "full", ""],
+    ["SC", "South Carolina", 5, "full", "Infrastructure maintenance fee, capped at $500.", { taxCap: 500 }],
+    ["SD", "South Dakota", 4, "full", "Motor vehicle excise tax."],
+    ["TN", "Tennessee", 7, "full", "Local tax also applies to part of the price."],
+    ["TX", "Texas", 6.25, "full", ""],
+    ["UT", "Utah", 4.85, "full", "Local taxes usually apply too."],
+    ["VT", "Vermont", 6, "full", "Purchase and use tax."],
+    ["VA", "Virginia", 4.15, "none", ""],
+    ["WA", "Washington", 6.5, "full", "Plus a 0.3% vehicle tax and local taxes; totals often near 10%."],
+    ["WV", "West Virginia", 6, "full", ""],
+    ["WI", "Wisconsin", 5, "full", "County taxes usually apply too."],
+    ["WY", "Wyoming", 4, "full", "Local taxes usually apply too."]
+  ];
+  const STATE_BY_CODE = Object.fromEntries(STATES.map(s => [s[0], s]));
+
+  const CAR_FIELDS = [
+    ["owed", "Still owe on it", "Loan payoff; blank if paid off"],
+    ["offer", "Best cash offer", "If you sell it outright, from anyone"],
+    ["down", "Your cash down", "Not counting money from the sale"]
+  ];
+  const DEALER_FIELDS = [
+    ["price", "Vehicle price", "Agreed price, before fees"],
+    ["discount", "Dealer discount", "Money off from the dealer"],
+    ["rebate", "Manufacturer rebate", "Cash back from the carmaker"],
+    ["docFee", "Dealer fees", "Doc or paperwork fee"],
+    ["regFee", "Title & registration", "DMV fees"],
+    ["apr", "Loan APR %", "Blank if paying cash"],
+    ["term", "Loan months", "Blank if paying cash"]
+  ];
+
+  const BLANK = {
+    settings: { state: "", rate: "", lux: false, luxRate: 7.75, threshold: 50000 },
+    car: {},
+    dealers: [{ name: "Dealer 1" }]
+  };
+  const EXAMPLE = {
+    settings: { state: "CT", rate: 6.35, lux: false, luxRate: 7.75, threshold: 50000 },
+    car: { owed: 8000, offer: 26500 },
+    dealers: [
+      { name: "Subaru of Anytown", price: 45000, docFee: 699, regFee: 400, apr: 5.9, term: 60, trade: 25000 },
+      { name: "Other Subaru", price: 45500, discount: 500, docFee: 599, regFee: 400, apr: 4.9, term: 60, trade: 24000 }
+    ]
+  };
+  const copy = o => JSON.parse(JSON.stringify(o));
+
+  const money = n => (n < 0 ? "−" : "") + Math.abs(n).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  const money2 = n => n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const num = x => Math.max(0, Number(x) || 0);
+
+  // The page's numbers live in the URL (#d=...), so the link itself can be shared or bookmarked.
+  const isValid = s => s && s.settings && s.car && Array.isArray(s.dealers) && s.dealers.length;
+  const encode = s => btoa(unescape(encodeURIComponent(JSON.stringify(s))))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const decode = str => JSON.parse(decodeURIComponent(escape(atob(str.replace(/-/g, "+").replace(/_/g, "/")))));
+
+  function load() {
+    try {
+      const m = location.hash.match(/^#d=(.+)$/);
+      if (m) {
+        const s = decode(m[1]);
+        if (isValid(s)) return s;
+      }
+    } catch (e) {}
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY));
+      if (isValid(s)) return s;
+    } catch (e) {}
+    return copy(BLANK);
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+    try { history.replaceState(null, "", "#d=" + encode(state)); } catch (e) {}
+  }
+
+  let state = load();
+
+  // path: "trade" (trade in at this dealer) or "sell" (sell for cash, buy here)
+  function calc(d, path) {
+    const st = state.settings, car = state.car;
+    const info = STATE_BY_CODE[st.state];
+    const credit = info ? info[3] : "full", extra = (info && info[5]) || {};
+    const price = Math.max(0, num(d.price) - num(d.discount)), rebate = num(d.rebate);
+    const doc = num(d.docFee), reg = num(d.regFee);
+    const apr = num(d.apr), term = Math.round(num(d.term));
+    const owed = num(car.owed), cashDown = num(car.down);
+    const value = path === "trade" ? num(d.trade) : num(car.offer);
+
+    const rate = st.lux && price > num(st.threshold) ? num(st.luxRate) : num(st.rate);
+    const tradeForTax = path !== "trade" ? 0 : credit === "none" ? 0 : credit === "cap" ? Math.min(value, extra.cap) : value;
+    let tax = Math.max(0, price + doc - tradeForTax) * rate / 100;
+    if (extra.taxCap) tax = Math.min(tax, extra.taxCap);
+    const total = price - rebate + doc + reg + tax;
+
+    // Trade: dealer pays off your loan; negative equity rolls into the new loan.
+    // Sell: loan is paid from the sale; leftover cash goes toward the new car.
+    const financed = path === "trade"
+      ? Math.max(0, total - value + owed - cashDown)
+      : Math.max(0, total - cashDown - Math.max(0, value - owed));
+
+    let pmt = 0;
+    const loan = financed > 0 && term > 0;
+    if (loan) {
+      const i = apr / 1200;
+      pmt = i === 0 ? financed / term : financed * i / (1 - Math.pow(1 + i, -term));
+    }
+    const interest = loan ? pmt * term - financed : 0;
+    const net = total + interest - value + owed;
+    return { rate, tax, financed, pmt, interest, net, loan, equity: value - owed };
+  }
+
+  function ready(d, path) {
+    if (num(d.price) <= 0) return "Enter this dealer's vehicle price.";
+    if (path === "trade" && num(d.trade) <= 0) return "Enter this dealer's trade-in offer.";
+    if (path === "sell" && num(state.car.offer) <= 0) return "Enter your best cash offer at the top.";
+    return "";
+  }
+
+  // ---------- Settings ----------
+  function renderSettings() {
+    const st = state.settings;
+    const sel = document.getElementById("state");
+    sel.innerHTML = `<option value="">Choose your state</option>` +
+      STATES.map(s => `<option value="${s[0]}">${s[1]}</option>`).join("");
+    sel.value = st.state || "";
+    for (const k of ["rate", "luxRate", "threshold"]) document.getElementById(k).value = st[k] ?? "";
+    document.getElementById("lux").checked = !!st.lux;
+    showLux();
+    showStateInfo();
+  }
+  function showLux() {
+    document.querySelectorAll(".lux-field").forEach(el => el.hidden = !state.settings.lux);
+  }
+  function showStateInfo() {
+    const info = STATE_BY_CODE[state.settings.state];
+    const el = document.getElementById("stateinfo");
+    if (!info) { el.textContent = ""; return; }
+    const credit = {
+      full: "Trade-in value lowers the taxable price.",
+      none: "No trade-in tax credit: tax is on the full price, so selling for cash loses nothing on tax.",
+      cap: "Trade-in tax credit is capped."
+    }[info[3]];
+    el.textContent = `${info[1]}: ${credit} ${info[4]}`.trim();
+  }
+
+  // ---------- Tree ----------
+  const field = (scope, i, [k, label, hint], obj) =>
+    `<label>${label}<span class="hint">${hint}</span><input type="number" inputmode="decimal" step="any" min="0" placeholder="0"
+      data-scope="${scope}" data-i="${i}" data-k="${k}" value="${esc(obj[k])}"></label>`;
+
+  function render() {
+    renderSettings();
+    const car = state.car;
+    document.getElementById("tree").innerHTML = `
+      <div class="node root">
+        <p class="node-title">Your current car</p>
+        <div class="fields">${CAR_FIELDS.map(f => field("car", 0, f, car)).join("")}</div>
+      </div>
+      <ul>
+        ${state.dealers.map((d, i) => `
+          <li>
+            <div class="node dealer">
+              <p class="node-title">Buy from</p>
+              <div class="dealer-head">
+                <input data-scope="dealer" data-i="${i}" data-k="name" value="${esc(d.name)}" aria-label="Dealer name">
+                ${state.dealers.length > 1 ? `<button data-remove="${i}" aria-label="Remove dealer">Remove</button>` : ""}
+              </div>
+              <div class="fields">${DEALER_FIELDS.map(f => field("dealer", i, f, d)).join("")}</div>
+            </div>
+            <ul>
+              <li>
+                <div class="node leaf" data-leaf="${i}-trade">
+                  <div class="leaf-title">Trade in here<small>Dealer takes your car as credit</small></div>
+                  ${field("dealer", i, ["trade", "Trade-in offer", "What this dealer gives for your car"], d)}
+                  <div class="res"></div>
+                </div>
+              </li>
+              <li>
+                <div class="node leaf" data-leaf="${i}-sell">
+                  <div class="leaf-title">Sell for cash, buy here<small>Sell elsewhere, bring the cash</small></div>
+                  <div class="given sellgiven"></div>
+                  <div class="res"></div>
+                </div>
+              </li>
+            </ul>
+          </li>`).join("")}
+      </ul>`;
+    document.getElementById("add").disabled = state.dealers.length >= MAX_DEALERS;
+    update();
+  }
+
+  function update() {
+    const leaves = [];
+    state.dealers.forEach((d, i) => ["trade", "sell"].forEach(path => {
+      const msg = ready(d, path);
+      leaves.push({ id: `${i}-${path}`, d, path, msg, r: msg ? null : calc(d, path) });
+    }));
+    const valid = leaves.filter(l => l.r);
+    const best = valid.length ? valid.reduce((a, b) => (b.r.net < a.r.net ? b : a)) : null;
+
+    const offer = num(state.car.offer);
+    document.querySelectorAll(".sellgiven").forEach(el => {
+      el.innerHTML = offer > 0 ? `Cash offer: <b>${money(offer)}</b> (from the top)` : "Uses your best cash offer from the top.";
+    });
+
+    for (const l of leaves) {
+      const node = document.querySelector(`[data-leaf="${l.id}"]`);
+      const out = node.querySelector(".res");
+      node.classList.toggle("best", valid.length > 1 && l === best);
+      if (!l.r) { out.innerHTML = `<div class="empty">${l.msg}</div>`; continue; }
+      const r = l.r;
+      const equityRow = num(state.car.owed) > 0
+        ? `<div class="row"><span>${r.equity >= 0 ? "Equity after payoff" : "Still owed after sale"}</span><span>${money(Math.abs(r.equity))}</span></div>` : "";
+      out.innerHTML = `
+        ${equityRow}
+        <div class="row"><span>Sales tax (${r.rate}%)</span><span>${money(r.tax)}</span></div>
+        ${r.loan
+          ? `<div class="row"><span>Financed</span><span>${money(r.financed)}</span></div>
+             <div class="row"><span>Monthly</span><span>${money2(r.pmt)}</span></div>
+             <div class="row"><span>Interest</span><span>${money(r.interest)}</span></div>`
+          : `<div class="row"><span>Due at signing</span><span>${money(r.financed)}</span></div>`}
+        <div class="row net"><span>Net cost</span><span>${money(r.net)}</span></div>
+        ${valid.length > 1 ? `<div class="delta">${l === best ? "Best path" : r.net - best.r.net < 1 ? "Tied with best" : "+" + money(r.net - best.r.net) + " vs best"}</div>` : ""}`;
+    }
+
+    const summary = document.getElementById("summary");
+    if (valid.length > 1) {
+      const nets = valid.map(l => l.r.net).sort((a, b) => a - b);
+      const how = best.path === "trade" ? "trade in there" : "sell for cash and buy there";
+      const gap = nets[1] - nets[0];
+      summary.textContent = `Best path: ${best.d.name || "Untitled dealer"}, ${how}. ` +
+        (gap < 1 ? "Another path ties it." : `${money(gap)} cheaper than the next option.`);
+      summary.hidden = false;
+    } else {
+      summary.hidden = true;
+    }
+  }
+
+  // ---------- Events ----------
+  document.querySelector(".settings").addEventListener("input", e => {
+    const t = e.target, st = state.settings;
+    if (t.id === "state") {
+      st.state = t.value;
+      const info = STATE_BY_CODE[t.value];
+      if (info) {
+        st.rate = info[2];
+        const extra = info[5] || {};
+        if (extra.luxRate) { st.luxRate = extra.luxRate; st.threshold = extra.threshold; }
+      }
+      save(); renderSettings(); update();
+      return;
+    }
+    st[t.id] = t.type === "checkbox" ? t.checked : t.value;
+    if (t.id === "lux") showLux();
+    save(); update();
+  });
+
+  document.getElementById("tree").addEventListener("input", e => {
+    const { scope, i, k } = e.target.dataset;
+    if (!scope) return;
+    const obj = scope === "car" ? state.car : state.dealers[+i];
+    obj[k] = e.target.value;
+    save(); update();
+  });
+
+  document.getElementById("tree").addEventListener("click", e => {
+    const btn = e.target.closest("[data-remove]");
+    if (!btn || state.dealers.length < 2) return;
+    state.dealers.splice(+btn.dataset.remove, 1);
+    save(); render();
+  });
+
+  document.getElementById("add").addEventListener("click", () => {
+    if (state.dealers.length >= MAX_DEALERS) return;
+    const last = state.dealers[state.dealers.length - 1];
+    state.dealers.push({ ...last, name: "Dealer " + (state.dealers.length + 1) });
+    save(); render();
+  });
+
+  document.getElementById("share").addEventListener("click", async () => {
+    save();
+    const btn = document.getElementById("share");
+    const url = location.href;
+    const flash = text => { btn.textContent = text; setTimeout(() => (btn.textContent = "Share link"), 2000); };
+    try {
+      if (navigator.share && matchMedia("(max-width: 760px)").matches) {
+        await navigator.share({ title: "Car Deal Calculator", url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      flash("Link copied ✓");
+    } catch (e) {
+      if (e && e.name === "AbortError") return;
+      prompt("Copy this link:", url);
+    }
+  });
+
+  document.getElementById("example").addEventListener("click", () => {
+    state = copy(EXAMPLE);
+    save(); render();
+  });
+
+  document.getElementById("reset").addEventListener("click", () => {
+    if (!confirm("Clear everything and start over?")) return;
+    state = copy(BLANK);
+    save(); render();
+    try { history.replaceState(null, "", location.pathname); } catch (e) {}
+  });
+
+  render();
+</script>
+</body>
+</html>
